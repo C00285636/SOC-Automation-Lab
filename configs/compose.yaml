@@ -1,1 +1,134 @@
+services:
+  cassandra:
+    image: "cassandra:${cassandra_image_version}"
+    container_name: cassandra
+    hostname: cassandra
+    restart: unless-stopped
+    environment:
+      - CASSANDRA_CLUSTER_NAME=TheHive
+      - CASSANDRA_AUTHENTICATOR=PasswordAuthenticator
+      - CASSANDRA_NUM_TOKENS=4
+      - HEAP_NEWSIZE=512M
+      - MAX_HEAP_SIZE=512M
+    volumes:
+      - './cassandra/data:/var/lib/cassandra'
+      - './cassandra/log:/var/log/cassandra'
+    networks:
+      - thehive-network
+    healthcheck:
+      test: ["CMD-SHELL", "cqlsh -u cassandra -p cassandra -e 'describe keyspaces' || exit 1"]
+      start_period: 120s
+      interval: 2s
+      timeout: 1s
+      retries: 3
 
+  elasticsearch:
+    image: "elasticsearch:${elasticsearch_image_version}"
+    container_name: elasticsearch
+    hostname: elasticsearch
+    restart: unless-stopped
+    environment:
+      - http.host=0.0.0.0
+      - discovery.type=single-node
+      - cluster.name=hive
+      - thread_pool.search.queue_size=100000
+      - thread_pool.write.queue_size=100000
+      - bootstrap.memory_lock=true
+      - xpack.security.enabled=true
+      - ELASTIC_PASSWORD=${elasticsearch_password}
+      - ES_JAVA_OPTS=-Xms256m -Xmx256m
+    volumes:
+      - './elasticsearch/data:/usr/share/elasticsearch/data'
+      - './elasticsearch/log:/usr/share/elasticsearch/logs'
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    networks:
+      - thehive-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f -s -u 'elastic:${elasticsearch_password}' http://elasticsearch:9200/_cat/health || exit 1"]
+      start_period: 60s
+      interval: 2s
+      timeout: 1s
+      retries: 5
+
+  thehive:
+    image: "strangebee/thehive:${thehive_image_version}"
+    container_name: thehive
+    hostname: thehive
+    restart: unless-stopped
+    command: '--no-config --no-config-secret'
+    environment:
+      - |
+        JAVA_OPTS=
+          -Xms1600M
+          -Xmx1600M
+          -XX:MaxMetaspaceSize=300m
+          -XX:ReservedCodeCacheSize=300m
+    volumes:
+      - ./thehive/config:/etc/thehive
+      - ./thehive/log:/var/log/thehive
+      - ./thehive/data/files:/opt/thp/thehive/files
+    networks:
+      - thehive-network
+    ports:
+      - '0.0.0.0:9000:9000'
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -f thehive:9000/thehive/api/status || exit 1"]
+      start_period: 60s
+      interval: 10s
+      timeout: 1s
+      retries: 5
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+      cassandra:
+        condition: service_healthy
+
+  cortex:
+    image: "thehiveproject/cortex:${cortex_image_version}"
+    container_name: cortex
+    hostname: cortex
+    restart: unless-stopped
+    environment:
+      - |
+        JAVA_OPTS=
+          -Xms1400M
+          -Xmx1400M
+          -XX:MaxMetaspaceSize=300m
+          -XX:ReservedCodeCacheSize=300m
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./cortex/jobs:/tmp/cortex-jobs
+      - ./cortex/config:/etc/cortex
+      - ./cortex/log:/var/log/cortex
+    networks:
+      - thehive-network
+    ports:
+      - '0.0.0.0:9001:9001'
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -f cortex:9001/cortex/api/status || exit 1"]
+      start_period: 40s
+      interval: 10s
+      timeout: 1s
+      retries: 5
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+
+  nginx:
+    image: "nginx:${nginx_image_version}"
+    container_name: nginx
+    hostname: nginx
+    restart: unless-stopped
+    volumes:
+      - ./nginx/config:/etc/nginx/conf.d
+      - ./nginx/html:/usr/share/nginx/html
+    networks:
+      - thehive-network
+    ports:
+      - 80:80
+
+networks:
+  thehive-network:
