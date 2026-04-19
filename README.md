@@ -26,7 +26,7 @@ SOC-Automation-Lab/
 ├── templates/
 │   └── thehive-case-templates.json
 └── docs/
-└── deployment-guide.md
+└── Configuartion-For-Pipeline (C00285636)
 
 ## Key results
 
@@ -41,7 +41,7 @@ SOC-Automation-Lab/
 
 ## How to set it up
 
-See [docs/deployment-guide.md] for full instructions.
+See [docs/Configuartion-For-Pipeline (C00285636)] for full instructions.
 
 The short version:
 1. Deploy MISP VM from the official image
